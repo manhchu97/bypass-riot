@@ -1,0 +1,23 @@
+<!-- Save file này thành: hcaptcha.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>hCaptcha Test</title>
+  <script src="/1/api.js?onload=onCaptchaLoad&render=explicit" async defer></script>
+</head>
+<body>
+  <h1>hCaptcha Demo</h1>
+
+  <div id="hcaptcha-container">
+    <div class="h-captcha" data-sitekey="019f1553-3845-481c-a6f5-5a60ccf6d830" data-size="invisible"></div>
+  </div>
+
+  <script>
+    // Auto-render hcaptcha widget
+    window.onload = function() {
+      console.log('Page loaded, hcaptcha script loaded');
+    };
+  </script>
+</body>
+</html>
