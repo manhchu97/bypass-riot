@@ -31,56 +31,78 @@ const port = 1997;
 
 async function puppeteerHandler(url, proxy) {
   return new Promise(async (resolve, reject) => {
+    const { browser, page } = await connect({
+      headless: false,
+      customConfig: {},
+      turnstile: true,
+      connectOption: {},
+      proxy,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-blink-features=AutomationControlled",
+      ],
+      plugins: [require("puppeteer-extra-plugin-stealth")()],
+    });
     try {
-      const { browser, page } = await connect({
-        headless: false,
-        customConfig: {},
-        turnstile: true,
-        connectOption: {},
-        proxy,
-      });
-
-      await page.setRequestInterception(true);
-
-      page.on("request", async (request) => {
-        const url = request.url();
-        if (url.includes("challenge.js")) {
-          await browser.close();
-          resolve({ success: false, msg: "Dính captcha !!!" });
-          return;
-        }
-        await request.continue();
-      });
-
-      page.on("response", async (response) => {
-        const url = response.url();
-
-        if (url.includes("https://api.hcaptcha.com/getcaptcha")) {
-          const status = response.status();
-          if (status === 400) {
-            await browser.close();
-            resolve({ success: false, msg: "Captcha trả về status 400 !!!" });
-          }
-        }
-
-        if (url.includes("webhook")) {
-          try {
-            await response.text(); // hoặc response.json() nếu biết chắc là JSON
-
-            resolve({ success: true });
-            await browser.close(); // đóng sau khi đã nhận xong body
-          } catch (e) {
-          }
-        }
-      });
-
+      // Mở một tab mới hoặc sử dụng tab cũ
       await page.goto(url, { waitUntil: "networkidle0" });
+      await fakeMouseMovement(page);
       await page.click("#bypass");
+
+      // Sử dụng vòng lặp để chờ phần tử #result có kết quả
+      let resultText = "";
+      let retries = 100; // Giới hạn số lần thử (để tránh vòng lặp vô hạn)
+
+      while (retries > 0) {
+        const el = await page.$("#result");
+        if (el) {
+          resultText = await page.$eval(
+            "#result",
+            (el) => el.textContent?.trim() || ""
+          );
+
+          // Nếu nhận được kết quả, thoát khỏi vòng lặp
+          if (resultText.startsWith("success:") || resultText === "failed") {
+            break;
+          }
+        }
+        retries--;
+        await wait(500); // Tạm dừng một chút trước khi thử lại
+      }
+
+      // Xử lý kết quả
+      if (resultText.startsWith("success:")) {
+        const token = resultText.replace("success:", "");
+        resolve({ success: true, token });
+        await browser.close();
+      } else if (resultText === "failed") {
+        resolve({ success: false, reason: "failed" });
+        await browser.close();
+      } else {
+        resolve({ success: false, reason: "unknown_result" });
+        await browser.close();
+      }
     } catch (error) {
-      console.log(error)
       resolve({ success: false, msg: "Lỗi không xác định" });
+      await browser.close();
     }
   });
+}
+
+async function fakeMouseMovement(page) {
+  const box = { x: 100, y: 100, width: 300, height: 200 };
+  const steps = 25;
+
+  for (let i = 0; i <= steps; i++) {
+    const x = box.x + (box.width / steps) * i + Math.random() * 2;
+    const y = box.y + (box.height / steps) * i + Math.random() * 2;
+    await page.mouse.move(x, y);
+    await wait(15 + Math.random() * 10);
+  }
+
+  // Optional: Hover lên nút #bypass trước khi click
+  await page.hover("#bypass");
 }
 
 app.use(
@@ -109,7 +131,8 @@ app.post("/init", async (req, res) => {
     hcaptcha.uid
   }&blob=${encodeURIComponent(hcaptcha.blob)}`;
   await syncCookies(hcaptcha.uid, jar, { redirectURL, proxy, data });
-  const result = await puppeteerHandler(urlBypass, proxy);
+  const result: any = await puppeteerHandler(urlBypass, proxy);
+  console.log({ ...result, proxy });
   res.json(result);
 });
 

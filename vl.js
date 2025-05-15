@@ -123,14 +123,13 @@ async function run() {
     { username: "vp17042006", password: "09102017phii" },
   ];
 
-  const batches = chunkArray(accounts, 20); // Mỗi batch 10 account
+  const batches = chunkArray(accounts, 2); // Mỗi batch 10 account
 
   for (const batch of batches) {
     const tasks = batch.map(({ username, password }) =>
       init(username, password)
     );
     await Promise.all(tasks);
-    await wait(5000);
   }
 }
 
